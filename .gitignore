@@ -1,0 +1,12 @@
+.vercel
+node_modules
+.env
+.env.local
+.env.production
+.env.development
+uploads
+logs
+build
+dist
+coverage
+*.log
