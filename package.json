@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "inspire-academy-backend",
   "version": "1.0.0",
   "description": "Inspire Academy Management System - Backend API",
@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "build": "echo Build completed",
     "seed:super-admins": "node seed-super-admins.js"
   },
   "dependencies": {
