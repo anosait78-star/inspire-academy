@@ -263,8 +263,10 @@ const getSubscriptionsByAcademy = async (req, res, next) => {
   // Resolve the target academy
   let academyId;
   if (isGlobalScopeRole(req.user.role)) {
-    // بدون معرّف صريح => بدون فلتر (كل الأكاديميات).
-    academyId = req.params.academyId;
+    // 'all' (أو غياب المعرّف) => بدون فلتر (كل الأكاديميات، Aggregate Mode).
+    academyId = (req.params.academyId && req.params.academyId !== 'all')
+      ? req.params.academyId
+      : null;
   } else {
     academyId = req.user.academyId?.toString();
     // أي دور غير super مُقيَّد بأكاديميته ولا يستطيع طلب أكاديمية أخرى.
@@ -320,8 +322,10 @@ const getRevenueSummary = async (req, res, next) => {
   // Resolve academy
   let academyId;
   if (isGlobalScopeRole(req.user.role)) {
-    // بدون معرّف صريح => ملخص لكل الأكاديميات.
-    academyId = req.params.academyId;
+    // 'all' (أو غياب المعرّف) => ملخص لكل الأكاديميات (Aggregate Mode).
+    academyId = (req.params.academyId && req.params.academyId !== 'all')
+      ? req.params.academyId
+      : null;
   } else {
     academyId = req.user.academyId?.toString();
     if (req.params.academyId && req.params.academyId !== academyId) {

@@ -7,10 +7,12 @@ const CATEGORIES = [
 
 const expenseSchema = new mongoose.Schema(
   {
+    // Expenses are a global, Super-Admin-level resource — not tied to a specific academy.
     academyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Academy',
-      required: [true, 'معرّف الأكاديمية مطلوب'],
+      required: false,
+      default: null,
     },
     name: {
       type: String,

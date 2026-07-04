@@ -3,32 +3,14 @@ const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const { logActivity } = require('../utils/activityLogger');
 
-// super_admin has no academyId of their own — they must pass one explicitly
-// (query for reads, body for creates); every other role is locked to theirs.
-function resolveAcademyId(req, paramAcademyId) {
-  if (req.user.role === 'super_admin') return paramAcademyId;
-  return req.user.academyId?.toString();
-}
-
-function hasAccess(req, recordAcademyId) {
-  if (req.user.role === 'super_admin') return true;
-  return recordAcademyId.toString() === req.user.academyId?.toString();
-}
-
+// Expenses are a global, Super-Admin-owned resource — no academy scoping.
 // ─── GET /expenses ───────────────────────────────────────────────────────────
 const getExpenses = async (req, res, next) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
-  // super_admin بدون academyId صريح → بدون فلتر (كل الأكاديميات).
-  const academyId = resolveAcademyId(req, req.query.academyId);
-  if (!academyId && req.user.role !== 'super_admin') {
-    return next(new AppError('معرّف الأكاديمية مطلوب', 400));
-  }
-
   const filter = {};
-  if (academyId) filter.academyId = academyId;
   if (req.query.category) filter.category = req.query.category;
   if (req.query.startDate || req.query.endDate) {
     filter.date = {};
@@ -48,9 +30,6 @@ const getExpenses = async (req, res, next) => {
 const getExpenseById = async (req, res, next) => {
   const expense = await Expense.findById(req.params.id);
   if (!expense) return next(new AppError('المصروف غير موجود', 404));
-  if (!hasAccess(req, expense.academyId)) {
-    return next(new AppError('ليس لديك صلاحية للوصول إلى هذا المصروف', 403));
-  }
   return sendSuccess(res, { data: expense, message: 'تم جلب بيانات المصروف بنجاح' });
 };
 
@@ -58,11 +37,7 @@ const getExpenseById = async (req, res, next) => {
 const createExpense = async (req, res, next) => {
   const { name, description, amount, date, category } = req.body;
 
-  const academyId = resolveAcademyId(req, req.body.academyId);
-  if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
-
   const expense = await Expense.create({
-    academyId,
     name,
     description: description !== undefined ? description : null,
     amount,
@@ -82,9 +57,6 @@ const createExpense = async (req, res, next) => {
 const updateExpense = async (req, res, next) => {
   const expense = await Expense.findById(req.params.id);
   if (!expense) return next(new AppError('المصروف غير موجود', 404));
-  if (!hasAccess(req, expense.academyId)) {
-    return next(new AppError('ليس لديك صلاحية لتعديل هذا المصروف', 403));
-  }
 
   const allowedFields = ['name', 'description', 'amount', 'date', 'category'];
   for (const field of allowedFields) {
@@ -104,9 +76,6 @@ const updateExpense = async (req, res, next) => {
 const deleteExpense = async (req, res, next) => {
   const expense = await Expense.findById(req.params.id);
   if (!expense) return next(new AppError('المصروف غير موجود', 404));
-  if (!hasAccess(req, expense.academyId)) {
-    return next(new AppError('ليس لديك صلاحية لحذف هذا المصروف', 403));
-  }
 
   await expense.deleteOne();
 
@@ -124,15 +93,9 @@ const getExpenseReport = async (req, res, next) => {
     return next(new AppError('تاريخ البداية والنهاية مطلوبان', 400));
   }
 
-  const academyId = resolveAcademyId(req, req.query.academyId);
-  if (!academyId && req.user.role !== 'super_admin') {
-    return next(new AppError('معرّف الأكاديمية مطلوب', 400));
-  }
-
   const matchFilter = {
     date: { $gte: startDate, $lte: endDate },
   };
-  if (academyId) matchFilter.academyId = academyId;
 
   const [byCategory, totals] = await Promise.all([
     Expense.aggregate([

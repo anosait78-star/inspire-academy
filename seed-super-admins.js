@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const connectDB = require('./src/config/database');
 
 const SUPER_ADMINS = [
-  { name: 'Super Admin', email: 'admin@inspireacademy.com', password: 'ChangeMe123!' },
+  { name: 'Super Admin', email: 'inspire@admin.com', password: 'inspire2026#' },
 ];
 
 const seedSuperAdmins = async () => {

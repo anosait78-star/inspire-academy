@@ -277,6 +277,21 @@ const getSupervisors = async (req, res, next) => {
   });
 };
 
+/**
+ * GET /api/v1/users
+ * super_admin only — lists every user across every academy (global, unfiltered).
+ */
+const getAllUsers = async (req, res, next) => {
+  const users = await User.find({})
+    .populate('academyId', 'name')
+    .sort({ created_at: -1 });
+
+  return sendSuccess(res, {
+    data: users,
+    message: 'تم جلب المستخدمين بنجاح',
+  });
+};
+
 module.exports = {
   createUser,
   updateUser,
@@ -287,4 +302,5 @@ module.exports = {
   getUsersByAcademy,
   getUserById,
   getSupervisors,
+  getAllUsers,
 };

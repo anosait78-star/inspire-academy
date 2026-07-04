@@ -10,6 +10,8 @@ const {
   getEvaluationDistribution,
   getRecentActivities,
   getSportStats,
+  getFinancialSummary,
+  getFinancialMonthly,
 } = require('../controllers/dashboard.controller');
 
 router.use(protect);
@@ -22,5 +24,9 @@ router.get('/players-by-birth-year', getPlayersByBirthYear);
 router.get('/evaluation-distribution', getEvaluationDistribution);
 router.get('/recent-activities', getRecentActivities);
 router.get('/sport-stats', getSportStats);
+
+// Financial summary/monthly are super_admin-only global endpoints.
+router.get('/financial-summary', restrictTo('super_admin'), getFinancialSummary);
+router.get('/financial-monthly', restrictTo('super_admin'), getFinancialMonthly);
 
 module.exports = router;

@@ -5,10 +5,12 @@ const mongoose = require('mongoose');
 // توليده (recalculate) ما دام لم يُدفع بعد.
 const payrollSchema = new mongoose.Schema(
   {
+    // Payroll is a global, Super-Admin-level resource — not tied to a specific academy.
     academyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Academy',
-      required: [true, 'معرّف الأكاديمية مطلوب'],
+      required: false,
+      default: null,
     },
     staffId: {
       type: mongoose.Schema.Types.ObjectId,

@@ -10,6 +10,7 @@ const {
   getUsersByAcademy,
   getUserById,
   getSupervisors,
+  getAllUsers,
 } = require('../controllers/user.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
@@ -68,6 +69,14 @@ router.get(
   mongoIdParam('academyId'),
   validate,
   getUsersByAcademy
+);
+
+// GET /api/v1/users — super_admin only; lists every user across every academy
+router.get(
+  '/',
+  protect,
+  restrictTo('super_admin'),
+  getAllUsers
 );
 
 // GET /api/v1/users/:id — protected

@@ -4,10 +4,12 @@ const WEEKDAYS = ['السبت', 'الأحد', 'الإثنين', 'الثلاثا�
 
 const staffSchema = new mongoose.Schema(
   {
+    // Employees are a global, Super-Admin-level resource — not tied to a specific academy.
     academyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Academy',
-      required: [true, 'معرّف الأكاديمية مطلوب'],
+      required: false,
+      default: null,
     },
     fullName: {
       type: String,

@@ -3,6 +3,10 @@ const Player = require('../models/player.model');
 const Subscription = require('../models/subscription.model');
 const Evaluation = require('../models/evaluation.model');
 const Activity = require('../models/activity.model');
+const Staff = require('../models/staff.model');
+const Expense = require('../models/expense.model');
+const Payroll = require('../models/payroll.model');
+const Academy = require('../models/academy.model');
 const { sendSuccess } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
 
@@ -318,6 +322,103 @@ const getSportStats = async (req, res, next) => {
   });
 };
 
+// GET /api/v1/dashboard/financial-summary
+// Global, Super-Admin-level financial snapshot. Never scoped to a selected
+// academy: Revenue/Expenses/Payroll/NetProfit and the headline counts always
+// aggregate across the whole system.
+const getFinancialSummary = async (req, res, next) => {
+  const [revenueAgg, expensesAgg, payrollAgg, employeesCount, academiesCount, playersCount, subscriptionsCount] =
+    await Promise.all([
+      Subscription.aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Expense.aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Payroll.aggregate([{ $group: { _id: null, total: { $sum: '$netSalary' } } }]),
+      Staff.countDocuments({ isActive: true }),
+      Academy.countDocuments({}),
+      Player.countDocuments({}),
+      Subscription.countDocuments({}),
+    ]);
+
+  const totalRevenue = revenueAgg[0]?.total || 0;
+  const totalExpenses = expensesAgg[0]?.total || 0;
+  const totalPayroll = payrollAgg[0]?.total || 0;
+  const netProfit = totalRevenue - totalExpenses - totalPayroll;
+
+  sendSuccess(res, {
+    data: {
+      totalRevenue,
+      totalExpenses,
+      totalPayroll,
+      netProfit,
+      employeesCount,
+      academiesCount,
+      playersCount,
+      subscriptionsCount,
+    },
+  });
+};
+
+// GET /api/v1/dashboard/financial-monthly
+// 12-month trend of Revenue / Expenses / Payroll / Net Profit — always global.
+const getFinancialMonthly = async (req, res, next) => {
+  const now = new Date();
+  const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+  const [revenueByMonth, expensesByMonth, payrollByMonth] = await Promise.all([
+    Subscription.aggregate([
+      { $match: { created_at: { $gte: twelveMonthsAgo } } },
+      {
+        $group: {
+          _id: { year: { $year: '$created_at' }, month: { $month: '$created_at' } },
+          total: { $sum: '$amount' },
+        },
+      },
+    ]),
+    Expense.aggregate([
+      { $match: { created_at: { $gte: twelveMonthsAgo } } },
+      {
+        $group: {
+          _id: { year: { $year: '$created_at' }, month: { $month: '$created_at' } },
+          total: { $sum: '$amount' },
+        },
+      },
+    ]),
+    Payroll.aggregate([
+      { $match: { created_at: { $gte: twelveMonthsAgo } } },
+      {
+        $group: {
+          _id: { year: { $year: '$created_at' }, month: { $month: '$created_at' } },
+          total: { $sum: '$netSalary' },
+        },
+      },
+    ]),
+  ]);
+
+  const toMap = (arr) => {
+    const map = {};
+    for (const item of arr) {
+      const key = `${item._id.year}-${String(item._id.month).padStart(2, '0')}`;
+      map[key] = item.total;
+    }
+    return map;
+  };
+
+  const revenueMap = toMap(revenueByMonth);
+  const expensesMap = toMap(expensesByMonth);
+  const payrollMap = toMap(payrollByMonth);
+
+  const filled = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const revenue = revenueMap[key] || 0;
+    const expenses = expensesMap[key] || 0;
+    const payroll = payrollMap[key] || 0;
+    filled.push({ month: key, revenue, expenses, payroll, netProfit: revenue - expenses - payroll });
+  }
+
+  sendSuccess(res, { data: filled });
+};
+
 module.exports = {
   getDashboardStats,
   getRevenueByMonth,
@@ -326,4 +427,6 @@ module.exports = {
   getEvaluationDistribution,
   getRecentActivities,
   getSportStats,
+  getFinancialSummary,
+  getFinancialMonthly,
 };

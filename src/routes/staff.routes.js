@@ -15,7 +15,7 @@ const Staff = require('../models/staff.model');
 const router = express.Router();
 
 router.use(protect);
-router.use(restrictTo('super_admin', 'academy_admin'));
+router.use(restrictTo('super_admin'));
 
 const createValidators = [
   body('fullName')
