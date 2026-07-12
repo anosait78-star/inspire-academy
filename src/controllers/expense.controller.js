@@ -1,9 +1,22 @@
+const mongoose = require('mongoose');
 const Expense = require('../models/expense.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const { logActivity } = require('../utils/activityLogger');
 
-// Expenses are a global, Super-Admin-owned resource — no academy scoping.
+// Expenses are scoped by academy: super_admin sees all (optionally narrowed by
+// an academyId param); academy_admin is pinned to their own academy.
+const resolveExpenseAcademyId = (req) => {
+  if (req.user.role === 'super_admin') return req.query.academyId || req.body.academyId || null;
+  return req.user.academyId?.toString();
+};
+
+// يتحقق أن للمستخدم صلاحية على مصروف بعينه (نطاق أكاديميته).
+const hasExpenseAccess = (req, expense) => {
+  if (req.user.role === 'super_admin') return true;
+  return expense.academyId?.toString() === req.user.academyId?.toString();
+};
+
 // ─── GET /expenses ───────────────────────────────────────────────────────────
 const getExpenses = async (req, res, next) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -11,6 +24,12 @@ const getExpenses = async (req, res, next) => {
   const skip = (page - 1) * limit;
 
   const filter = {};
+  // تقييد بالأكاديمية لغير المدير العام.
+  if (req.user.role !== 'super_admin') {
+    filter.academyId = req.user.academyId;
+  } else if (req.query.academyId) {
+    filter.academyId = req.query.academyId;
+  }
   if (req.query.category) filter.category = req.query.category;
   if (req.query.startDate || req.query.endDate) {
     filter.date = {};
@@ -30,6 +49,9 @@ const getExpenses = async (req, res, next) => {
 const getExpenseById = async (req, res, next) => {
   const expense = await Expense.findById(req.params.id);
   if (!expense) return next(new AppError('المصروف غير موجود', 404));
+  if (!hasExpenseAccess(req, expense)) {
+    return next(new AppError('ليس لديك صلاحية لعرض هذا المصروف', 403));
+  }
   return sendSuccess(res, { data: expense, message: 'تم جلب بيانات المصروف بنجاح' });
 };
 
@@ -43,6 +65,7 @@ const createExpense = async (req, res, next) => {
     amount,
     date,
     category,
+    academyId: resolveExpenseAcademyId(req),
     createdBy: req.user._id,
   });
 
@@ -57,6 +80,9 @@ const createExpense = async (req, res, next) => {
 const updateExpense = async (req, res, next) => {
   const expense = await Expense.findById(req.params.id);
   if (!expense) return next(new AppError('المصروف غير موجود', 404));
+  if (!hasExpenseAccess(req, expense)) {
+    return next(new AppError('ليس لديك صلاحية لتعديل هذا المصروف', 403));
+  }
 
   const allowedFields = ['name', 'description', 'amount', 'date', 'category'];
   for (const field of allowedFields) {
@@ -76,6 +102,9 @@ const updateExpense = async (req, res, next) => {
 const deleteExpense = async (req, res, next) => {
   const expense = await Expense.findById(req.params.id);
   if (!expense) return next(new AppError('المصروف غير موجود', 404));
+  if (!hasExpenseAccess(req, expense)) {
+    return next(new AppError('ليس لديك صلاحية لحذف هذا المصروف', 403));
+  }
 
   await expense.deleteOne();
 
@@ -96,6 +125,11 @@ const getExpenseReport = async (req, res, next) => {
   const matchFilter = {
     date: { $gte: startDate, $lte: endDate },
   };
+  // تقييد التقرير بالأكاديمية لغير المدير العام.
+  const scopeAcademyId = resolveExpenseAcademyId(req);
+  if (scopeAcademyId) {
+    matchFilter.academyId = new mongoose.Types.ObjectId(String(scopeAcademyId));
+  }
 
   const [byCategory, totals] = await Promise.all([
     Expense.aggregate([

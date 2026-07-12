@@ -15,7 +15,7 @@ const Expense = require('../models/expense.model');
 const router = express.Router();
 
 router.use(protect);
-router.use(restrictTo('super_admin'));
+router.use(restrictTo('super_admin', 'academy_admin'));
 
 const createValidators = [
   body('name').notEmpty().withMessage('اسم المصروف مطلوب').isLength({ max: 150 }).withMessage('اسم المصروف طويل جداً'),
