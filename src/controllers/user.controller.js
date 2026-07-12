@@ -68,11 +68,16 @@ const createUser = async (req, res, next) => {
  * super_admin only — updates name and/or email
  */
 const updateUser = async (req, res, next) => {
-  const { name, email } = req.body;
+  const { name, email, role, academyId } = req.body;
 
   const user = await User.findById(req.params.id);
   if (!user) {
     return next(new AppError('المستخدم غير موجود', 404));
+  }
+
+  // لا يُغيَّر دور حساب المدير العام عبر هذا المسار.
+  if (user.role === 'super_admin' && role !== undefined && role !== 'super_admin') {
+    return next(new AppError('لا يمكن تغيير دور المدير العام', 403));
   }
 
   // Prevent changing email to one already taken by another user
@@ -85,6 +90,18 @@ const updateUser = async (req, res, next) => {
   }
 
   if (name) user.name = name;
+
+  // تحديث الدور (super_admin فقط — مضمون على مستوى المسار عبر restrictTo).
+  if (role !== undefined && user.role !== 'super_admin') {
+    user.role = role;
+  }
+
+  // تحديث الأكاديمية. academy_supervisor لا يرتبط بأكاديمية محددة.
+  if (academyId !== undefined) {
+    user.academyId = (role === 'academy_supervisor' || user.role === 'academy_supervisor')
+      ? null
+      : academyId;
+  }
 
   await user.save();
   await user.populate('academyId', 'name');

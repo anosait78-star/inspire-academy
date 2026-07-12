@@ -47,6 +47,12 @@ const updateUserValidators = [
     .optional()
     .isEmail().withMessage('صيغة البريد الإلكتروني غير صحيحة')
     .normalizeEmail(),
+  body('role')
+    .optional()
+    .isIn(['academy_admin', 'admin', 'academy_supervisor']).withMessage('الدور غير صحيح'),
+  body('academyId')
+    .optional({ nullable: true })
+    .isMongoId().withMessage('معرف الأكاديمية غير صحيح'),
 ];
 
 const mongoIdParam = (paramName) =>
