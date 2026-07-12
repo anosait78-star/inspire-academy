@@ -112,6 +112,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+// بصمة النشر — لتأكيد أن Vercel يشغّل أحدث كود. عام (بدون مصادقة).
+app.get('/api/v1/version', (req, res) => {
+  res.status(200).json({
+    success: true,
+    build: 'staff-payroll-expense-academy-admin-v2',
+    deployedMarker: '2026-07-12-permissions-fix',
+  });
+});
+
 app.use('/api/v1/auth/login', loginLimiter);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/academies', academyRoutes);
