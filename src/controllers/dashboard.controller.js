@@ -419,8 +419,66 @@ const getFinancialMonthly = async (req, res, next) => {
   sendSuccess(res, { data: filled });
 };
 
+// GET /api/v1/dashboard/staff-stats
+// مؤشرات الموظفين: العدد الكلي، الحاضرون/الغائبون/المتأخرون اليوم،
+// وإجمالي ساعات العمل خلال الشهر الحالي. مُقيَّدة بنطاق صلاحيات المستخدم.
+const getStaffStats = async (req, res, next) => {
+  const StaffAttendance = require('../models/staff_attendance.model');
+  const match = buildAcademyMatch(req); // { academyId } أو {} للـ super_admin
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const now = new Date();
+  const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  const firstOfMonth = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`;
+
+  const staffMatch = { ...match, isActive: true };
+  const todayMatch = { ...match, date: today };
+  const monthMatch = { ...match, date: { $gte: firstOfMonth, $lte: today } };
+
+  const [totalStaff, todayAgg, monthRecords] = await Promise.all([
+    Staff.countDocuments(staffMatch),
+    StaffAttendance.aggregate([
+      { $match: todayMatch },
+      {
+        $group: {
+          _id: null,
+          present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
+          late: { $sum: { $cond: ['$late', 1, 0] } },
+        },
+      },
+    ]),
+    StaffAttendance.find(monthMatch).select('checkInTime checkOutTime').lean(),
+  ]);
+
+  const presentToday = todayAgg[0]?.present || 0;
+  const lateToday = todayAgg[0]?.late || 0;
+  const absentToday = Math.max(totalStaff - presentToday, 0);
+
+  let totalWorkMinutes = 0;
+  for (const r of monthRecords) {
+    if (r.checkInTime && r.checkOutTime) {
+      const [ih, im] = r.checkInTime.split(':').map(Number);
+      const [oh, om] = r.checkOutTime.split(':').map(Number);
+      let diff = oh * 60 + om - (ih * 60 + im);
+      if (diff < 0) diff += 24 * 60;
+      totalWorkMinutes += diff;
+    }
+  }
+
+  sendSuccess(res, {
+    data: {
+      totalStaff,
+      presentToday,
+      absentToday,
+      lateToday,
+      totalWorkHours: Math.round((totalWorkMinutes / 60) * 10) / 10,
+    },
+  });
+};
+
 module.exports = {
   getDashboardStats,
+  getStaffStats,
   getRevenueByMonth,
   getSubscriptionsByType,
   getPlayersByBirthYear,

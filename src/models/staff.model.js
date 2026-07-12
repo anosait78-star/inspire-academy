@@ -11,6 +11,14 @@ const staffSchema = new mongoose.Schema(
       required: false,
       default: null,
     },
+    // كود الموظف الفريد (مثل E-0001) — أساس رمز الـ QR وثابت مدى الحياة.
+    // يُولَّد تلقائياً في pre-validate بنفس فكرة كود اللاعب.
+    staffCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      immutable: true,
+    },
     fullName: {
       type: String,
       required: [true, 'اسم الموظف مطلوب'],
@@ -55,6 +63,19 @@ const staffSchema = new mongoose.Schema(
     hireDate: {
       type: Date,
       required: [true, 'تاريخ التعيين مطلوب'],
+    },
+    // وقت بدء الدوام المتوقّع بصيغة 'HH:mm'. يُستخدم لتحديد التأخير عند مسح الـ QR.
+    // إن كان فارغاً (null) لا يُحتسب الموظف متأخراً أبداً.
+    shiftStartTime: {
+      type: String,
+      default: null,
+      validate: {
+        validator: function (v) {
+          if (v === undefined || v === null || v === '') return true;
+          return /^\d{2}:\d{2}$/.test(v);
+        },
+        message: 'صيغة وقت بدء الدوام غير صحيحة',
+      },
     },
     baseSalary: {
       type: Number,
@@ -118,8 +139,29 @@ const staffSchema = new mongoose.Schema(
 
 staffSchema.index({ academyId: 1 });
 staffSchema.index({ academyId: 1, isActive: 1 });
+staffSchema.index(
+  { fullName: 'text', staffCode: 'text', phone: 'text' },
+  { name: 'staff_text_search' }
+);
 
 staffSchema.statics.WEEKDAYS = WEEKDAYS;
+
+// توليد كود الموظف التالي بصيغة E-0001 (بنفس فكرة generatePlayerCode للاعبين).
+staffSchema.statics.generateStaffCode = async function () {
+  const last = await this.findOne({ staffCode: { $ne: null } }, { staffCode: 1 })
+    .sort({ staffCode: -1 });
+  if (!last || !last.staffCode) return 'E-0001';
+  const lastNum = parseInt(last.staffCode.split('-')[1], 10);
+  return 'E-' + String(lastNum + 1).padStart(4, '0');
+};
+
+// تعيين كود الموظف تلقائياً عند الإنشاء.
+staffSchema.pre('validate', async function (next) {
+  if (this.isNew && !this.staffCode) {
+    this.staffCode = await this.constructor.generateStaffCode();
+  }
+  next();
+});
 
 const Staff = mongoose.model('Staff', staffSchema);
 module.exports = Staff;

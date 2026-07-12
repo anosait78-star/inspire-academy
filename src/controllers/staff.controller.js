@@ -31,13 +31,24 @@ const getStaff = async (req, res, next) => {
 
   const filter = {};
 
+  // نطاق الصلاحيات: Academy Admin يرى موظفي أكاديميته فقط، Super Admin يرى الجميع.
+  if (req.user.role !== 'super_admin') {
+    filter.academyId = req.user.academyId;
+  } else if (req.query.academyId) {
+    filter.academyId = req.query.academyId;
+  }
+
   if (req.query.showInactive !== 'true') {
     filter.isActive = true;
   }
 
+  if (req.query.position && req.query.position.trim().length > 0) {
+    filter.position = req.query.position.trim();
+  }
+
   if (req.query.search && req.query.search.trim().length > 0) {
     const regex = new RegExp(req.query.search.trim(), 'i');
-    filter.$or = [{ fullName: regex }, { phone: regex }, { position: regex }];
+    filter.$or = [{ fullName: regex }, { phone: regex }, { position: regex }, { staffCode: regex }];
   }
 
   const [staff, total] = await Promise.all([
@@ -52,6 +63,12 @@ const getStaff = async (req, res, next) => {
 const getStaffById = async (req, res, next) => {
   const staff = await Staff.findById(req.params.id);
   if (!staff) return next(new AppError('الموظف غير موجود', 404));
+  if (
+    req.user.role !== 'super_admin' &&
+    staff.academyId?.toString() !== req.user.academyId?.toString()
+  ) {
+    return next(new AppError('ليس لديك صلاحية لعرض هذا الموظف', 403));
+  }
   return sendSuccess(res, { data: staff, message: 'تم جلب بيانات الموظف بنجاح' });
 };
 
@@ -72,8 +89,18 @@ const createStaff = async (req, res, next) => {
     deductionValue,
   };
 
+  // نطاق الأكاديمية: Academy Admin يُنشئ ضمن أكاديميته؛ Super Admin يمرّرها اختيارياً.
+  if (req.user.role !== 'super_admin') {
+    staffData.academyId = req.user.academyId;
+  } else if (req.body.academyId) {
+    staffData.academyId = req.body.academyId;
+  }
+
   if (email !== undefined && email !== '') staffData.email = email;
   if (baseSalary !== undefined && baseSalary !== '') staffData.baseSalary = baseSalary;
+  if (req.body.shiftStartTime !== undefined && req.body.shiftStartTime !== '') {
+    staffData.shiftStartTime = req.body.shiftStartTime;
+  }
 
   const workingDays = parseArrayField(req.body.workingDays);
   if (workingDays !== undefined) staffData.workingDays = workingDays;
@@ -97,10 +124,16 @@ const createStaff = async (req, res, next) => {
 const updateStaff = async (req, res, next) => {
   const staff = await Staff.findById(req.params.id).select('+photo_public_id');
   if (!staff) return next(new AppError('الموظف غير موجود', 404));
+  if (
+    req.user.role !== 'super_admin' &&
+    staff.academyId?.toString() !== req.user.academyId?.toString()
+  ) {
+    return next(new AppError('ليس لديك صلاحية لتعديل هذا الموظف', 403));
+  }
 
   const allowedFields = [
     'fullName', 'position', 'phone', 'email', 'hireDate', 'baseSalary',
-    'monthlyAttendanceTarget', 'deductionType', 'deductionValue',
+    'monthlyAttendanceTarget', 'deductionType', 'deductionValue', 'shiftStartTime',
   ];
   for (const field of allowedFields) {
     if (req.body[field] !== undefined) staff[field] = req.body[field];
@@ -131,6 +164,12 @@ const updateStaff = async (req, res, next) => {
 const deleteStaff = async (req, res, next) => {
   const staff = await Staff.findById(req.params.id);
   if (!staff) return next(new AppError('الموظف غير موجود', 404));
+  if (
+    req.user.role !== 'super_admin' &&
+    staff.academyId?.toString() !== req.user.academyId?.toString()
+  ) {
+    return next(new AppError('ليس لديك صلاحية لحذف هذا الموظف', 403));
+  }
 
   staff.isActive = false;
   await staff.save();

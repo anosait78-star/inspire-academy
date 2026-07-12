@@ -15,7 +15,7 @@ const Staff = require('../models/staff.model');
 const router = express.Router();
 
 router.use(protect);
-router.use(restrictTo('super_admin'));
+router.use(restrictTo('super_admin', 'academy_admin'));
 
 const createValidators = [
   body('fullName')
@@ -51,6 +51,9 @@ const createValidators = [
       }
       return true;
     }),
+  body('shiftStartTime')
+    .optional({ checkFalsy: true })
+    .matches(/^\d{2}:\d{2}$/).withMessage('صيغة وقت بدء الدوام غير صحيحة'),
   body('workingDays').custom((value) => {
     const arr = Array.isArray(value) ? value : (typeof value === 'string' ? value.split(',') : []);
     if (!arr || arr.length === 0) throw new Error('أيام العمل مطلوبة');
@@ -70,6 +73,7 @@ const updateValidators = [
   body('monthlyAttendanceTarget').optional().isInt({ min: 1 }).withMessage('عدد أيام الحضور المطلوبة غير صحيح'),
   body('deductionType').optional().isIn(['percentage', 'fixed']).withMessage('نوع الخصم غير صحيح'),
   body('deductionValue').optional().isFloat({ min: 0 }).withMessage('قيمة الخصم غير صحيحة'),
+  body('shiftStartTime').optional({ checkFalsy: true }).matches(/^\d{2}:\d{2}$/).withMessage('صيغة وقت بدء الدوام غير صحيحة'),
 ];
 
 router.get('/', getStaff);

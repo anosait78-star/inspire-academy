@@ -27,6 +27,28 @@ const staffAttendanceSchema = new mongoose.Schema(
         message: 'حالة الحضور غير صحيحة',
       },
     },
+    // وقت الحضور (أول مسح) بصيغة 'HH:mm'.
+    checkInTime: {
+      type: String,
+      default: null,
+      match: [/^\d{2}:\d{2}$/, 'صيغة وقت الحضور غير صحيحة'],
+    },
+    // وقت الانصراف (ثاني مسح) بصيغة 'HH:mm'.
+    checkOutTime: {
+      type: String,
+      default: null,
+      match: [/^\d{2}:\d{2}$/, 'صيغة وقت الانصراف غير صحيحة'],
+    },
+    // طابع زمني دقيق لوقت الحضور — للترتيب والحسابات.
+    checkInTimestamp: {
+      type: Date,
+      default: null,
+    },
+    // هل تأخّر الموظف عن وقت بدء دوامه المتوقّع؟
+    late: {
+      type: Boolean,
+      default: false,
+    },
     markedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -56,6 +78,16 @@ const staffAttendanceSchema = new mongoose.Schema(
     },
   }
 );
+
+// مدة العمل بالدقائق (تُحسب من وقت الحضور والانصراف). null إن لم يكتمل اليوم.
+staffAttendanceSchema.virtual('workMinutes').get(function () {
+  if (!this.checkInTime || !this.checkOutTime) return null;
+  const [ih, im] = this.checkInTime.split(':').map(Number);
+  const [oh, om] = this.checkOutTime.split(':').map(Number);
+  let diff = oh * 60 + om - (ih * 60 + im);
+  if (diff < 0) diff += 24 * 60; // انصراف بعد منتصف الليل
+  return diff;
+});
 
 staffAttendanceSchema.index({ staffId: 1, date: 1 }, { unique: true });
 staffAttendanceSchema.index({ academyId: 1, date: 1 });

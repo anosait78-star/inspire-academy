@@ -4,6 +4,7 @@ const router = express.Router();
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 const {
   getDashboardStats,
+  getStaffStats,
   getRevenueByMonth,
   getSubscriptionsByType,
   getPlayersByBirthYear,
@@ -18,6 +19,7 @@ router.use(protect);
 router.use(restrictTo('super_admin', 'academy_admin'));
 
 router.get('/stats', getDashboardStats);
+router.get('/staff-stats', getStaffStats);
 router.get('/revenue-by-month', getRevenueByMonth);
 router.get('/subscriptions-by-type', getSubscriptionsByType);
 router.get('/players-by-birth-year', getPlayersByBirthYear);
