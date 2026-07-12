@@ -5,7 +5,25 @@ const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const { logActivity } = require('../utils/activityLogger');
 
-// Payroll is a global, Super-Admin-owned resource — no academy scoping.
+// Payroll is scoped by academy: super_admin sees all (optionally narrowed by an
+// academyId param); academy_admin is pinned to their own academy's staff.
+// Payroll records reference staff by staffId only (no academyId field), so we
+// derive the allowed staff ids from the Staff collection when scoping.
+
+// يُعيد فلتر staffId لتقييد سجلات الرواتب بموظفي أكاديمية المستخدم.
+// للـ super_admin: null (بلا تقييد) ما لم يمرّر academyId. لغيره: مقيّد بأكاديميته.
+async function buildStaffScope(req) {
+  let academyId = null;
+  if (req.user.role === 'super_admin') {
+    academyId = req.query.academyId || req.body.academyId || null;
+  } else {
+    academyId = req.user.academyId?.toString();
+  }
+  if (!academyId) return { academyId: null, staffIdIn: null };
+  const staffIds = await Staff.find({ academyId }).distinct('_id');
+  return { academyId, staffIdIn: staffIds };
+}
+
 const computeNetSalary = ({ baseSalary, monthlyAttendanceTarget, presentCount, deductionType, deductionValue }) => {
   const absentCount = Math.max(monthlyAttendanceTarget - presentCount, 0);
   const salary = baseSalary || 0;
@@ -29,6 +47,9 @@ const generatePayroll = async (req, res, next) => {
 
   const staffFilter = { isActive: true };
   if (staffId) staffFilter._id = staffId;
+  // تقييد بأكاديمية المستخدم (academy_admin) أو academyId المُمرَّر (super_admin).
+  const { academyId: scopeAcademyId } = await buildStaffScope(req);
+  if (scopeAcademyId) staffFilter.academyId = scopeAcademyId;
 
   const staffList = await Staff.find(staffFilter);
   if (staffList.length === 0) {
@@ -94,8 +115,24 @@ const generatePayroll = async (req, res, next) => {
 const getPayrollList = async (req, res, next) => {
   const filter = {};
   if (req.query.month) filter.month = req.query.month;
-  if (req.query.staffId) filter.staffId = req.query.staffId;
   if (req.query.status) filter.status = req.query.status;
+
+  // تقييد بالأكاديمية عبر موظفيها. عند طلب موظف محدّد نتحقق أنه ضمن النطاق.
+  const { staffIdIn } = await buildStaffScope(req);
+  const requestedStaffId = req.query.staffId;
+  if (staffIdIn) {
+    const allowed = new Set(staffIdIn.map((id) => id.toString()));
+    if (requestedStaffId) {
+      if (!allowed.has(requestedStaffId.toString())) {
+        return sendSuccess(res, { data: [], message: 'تم جلب الرواتب بنجاح' });
+      }
+      filter.staffId = requestedStaffId;
+    } else {
+      filter.staffId = { $in: staffIdIn };
+    }
+  } else if (requestedStaffId) {
+    filter.staffId = requestedStaffId;
+  }
 
   const records = await Payroll.find(filter).populate('staffId', 'fullName position').sort({ month: -1 });
   return sendSuccess(res, { data: records, message: 'تم جلب الرواتب بنجاح' });
@@ -109,6 +146,10 @@ const getPayrollReport = async (req, res, next) => {
   }
 
   const reportFilter = { month };
+
+  // تقييد التقرير بموظفي أكاديمية المستخدم.
+  const { staffIdIn } = await buildStaffScope(req);
+  if (staffIdIn) reportFilter.staffId = { $in: staffIdIn };
 
   const records = await Payroll.find(reportFilter)
     .populate('staffId', 'fullName position');
@@ -137,8 +178,16 @@ const getPayrollReport = async (req, res, next) => {
 
 // ─── PATCH /payroll/:id/mark-paid ────────────────────────────────────────────
 const markPaid = async (req, res, next) => {
-  const payroll = await Payroll.findById(req.params.id);
+  const payroll = await Payroll.findById(req.params.id).populate('staffId', 'academyId');
   if (!payroll) return next(new AppError('سجل الراتب غير موجود', 404));
+
+  // منع مدير الأكاديمية من تأكيد دفع راتب موظف خارج أكاديميته.
+  if (req.user.role !== 'super_admin') {
+    const recAcademyId = payroll.staffId?.academyId?.toString();
+    if (recAcademyId !== req.user.academyId?.toString()) {
+      return next(new AppError('ليس لديك صلاحية لتعديل هذا السجل', 403));
+    }
+  }
 
   payroll.status = 'paid';
   payroll.paidAt = new Date();

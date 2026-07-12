@@ -12,7 +12,7 @@ const validate = require('../middleware/validate');
 const router = express.Router();
 
 router.use(protect);
-router.use(restrictTo('super_admin'));
+router.use(restrictTo('super_admin', 'academy_admin'));
 
 const generateValidators = [
   body('month').notEmpty().withMessage('الشهر مطلوب').matches(/^\d{4}-\d{2}$/).withMessage('صيغة الشهر غير صحيحة'),
